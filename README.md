@@ -663,7 +663,7 @@ When creating Redshift tables, this library's default behavior is to create `TEX
 
 To support larger columns, you can use the `maxlength` column metadata field to specify the maximum length of individual string columns. This can also be done as a space-savings performance optimization in order to declare columns with a smaller maximum length than the default.
 
-> **:warning: Note**: Due to limitations in Spark, metadata modification is unsupported in the Python, SQL, and R language APIs.
+> **:warning: Note**: Due to limitations in Spark, the SQL and R language APIs do not support column metadata modification. Python support for column metadata modification requires Databricks Runtime 3.0+.
 
 Here is an example of updating multiple columns' metadata fields using Spark's Scala API:
 
@@ -693,10 +693,37 @@ df.write
   .save()
 ```
 
+Here is an example of updating multiple columns' metadata fields using Spark's Python API. This is new in Databricks Runtime 3.0+:
+
+```python
+df = ... # the dataframe you'll want to write to Redshift
+
+# Specify the custom width of each column
+columnLengthMap = {
+  "language_code": 2,
+  "country_code": 2,
+  "url": 2083,
+}
+
+# Apply each column metadata customization
+for (colName, length) in columnLengthMap.iteritems():
+  metadata = {'maxlength': length}
+  df = df.withColumn(colName, df[colName].alias(colName, metadata=metadata))
+
+df.write \
+  .format("com.databricks.spark.redshift") \
+  .option("url", jdbcURL) \
+  .option("tempdir", s3TempDirectory) \
+  .option("dbtable", sessionTable) \
+  .save()
+```
+
 ### Setting a custom column type
 
 If you need to manually set a column type, you can use the `redshift_type` column metadata. For example, if you desire to override
 the `Spark SQL Schema -> Redshift SQL` type matcher to assign a user-defined column type, you can do the following:
+
+Scala:
 
 ```scala
 import org.apache.spark.sql.types.MetadataBuilder
@@ -715,6 +742,24 @@ columnTypeMap.foreach { case (colName, colType) =>
   val metadata = new MetadataBuilder().putString("redshift_type", colType).build()
   df = df.withColumn(colName, df(colName).as(colName, metadata))
 }
+```
+
+Python:
+
+```python
+# Specify the custom type of each column
+columnTypeMap = {
+  "language_code": "CHAR(2)",
+  "country_code": "CHAR(2)",
+  "url": "BPCHAR(111)",
+}
+
+df = ... # the dataframe you'll want to write to Redshift
+
+# Apply each column metadata customization
+for (colName, colType) in columnTypeMap.iteritems():
+  metadata = {'redshift_type': colType}
+  df = df.withColumn(colName, df[colName].alias(colName, metadata=metadata))
 ```
 
 ### Configuring column encoding
